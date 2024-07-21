@@ -1,0 +1,613 @@
+---
+title: 'stppSim: An R package for synthesizing spatiotemporal point patterns - A user
+  guide'
+author: |
+  | `Adepeju, M.`
+  | `Big Data Centre, Manchester Metropolitan University, Manchester, M15 6BH, UK`
+  | `Author:`
+date: |
+  | ``r Sys.Date()``
+  | `Date:`
+output:
+  html_document:
+    df_print: paged
+urlcolor: blue
+linestretch: 1.5
+fontsize: 16pt
+bibliography: references.bib
+abstract: In light of the progressively limited access to comprehensive spatially and temporally logged point data, the stppSim package presents an alternate data solution that carries substantial promise across a spectrum of research and practical applications. This package equips users with the capability to specify the attributes of an assemblage of 'agents' (symbolic of entities like objects, individuals, etc.), whose activities within spatial (landscape) and temporal contexts yield fresh instances of point patterns and interactions within the surroundings. The resultant assemblage of points and patterns can subsequently be quantified, scrutinized, and processed to facilitate assessments and evaluations of spatial and/or temporal models.
+
+vignette: >
+  %\VignetteIndexEntry{stppSim: An R package for synthesizing spatiotemporal point patterns - A user guide}
+  %\VignetteEngine{knitr::rmarkdown} 
+  \usepackage[utf8]{inputenc}
+---
+
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r functions, include=FALSE}
+# A function for captioning and referencing images
+fig <- local({
+    i <- 0
+    ref <- list()
+    list(
+        cap=function(refName, text) {
+            i <<- i + 1
+            ref[[refName]] <<- i
+            paste("Figure ", i, ": ", text, sep="")
+        },
+        ref=function(refName) {
+            ref[[refName]]
+        })
+})
+```
+
+
+
+
+## ***Introduction***
+
+In numerous research scenarios, the availability of detailed spatiotemporal (ST) point data is often greatly limited due to privacy considerations. To tackle this issue, the `R-stppSim` package has been created with the purpose of offering a solution. It enables users to replicate real-world data situations, thus offering an alternative reservoir of spatiotemporal point patterns. The suggested methodology employs microsimulation and agent-based methodologies to generate a collection of 'walkers' (which can represent agents, objects, individuals, etc.). These walkers possess defined movement characteristics and engage with the surrounding environment.
+
+The package includes two main functions: (i) psim_artif and (ii) psim_real, both of which play a central role in simulating defined spatiotemporal interactions within point data. The function `psim_artif` generates these interactions based on user-provided parameters, effectively executing the simulation process without relying on any existing point data. In contrast, the function psim_real generates point interactions using the provided actual sample dataset. This latter function proves particularly valuable in situations where genuine point data is scarce or inadequate for practical applications. 
+
+## ***Elements of data simulation***
+
+The following section describes three essential components of the simulation: the agents, the spatial factors, and the temporal aspects:
+
+### ***The agents (`walkers`)***
+
+The following properties defines the agents:
+
+* ***Movement*** - Agents or walkers possess the capacity to navigate in diverse directions and are equipped to identify obstacles or limitations along their trajectories. These movements are primarily governed by an inherent transition matrix (TM), which establishes two primary operational states: the exploratory state (where a walker is engaged in environmental exploration) and the performative state (where a walker is executing an action). The probabilistic characteristics of this TM introduce diversity in behavioral patterns among the walkers. To instigate a switch from one state to the other, a categorical distribution is assigned to a latent state variable $z_{it}$, such that each step (in time) may result into the next state, independent of the previous state: $$z_t \sim Categorical(\Psi{_{1t}}, \Psi{_{2t}})$$ Such that $\Psi{_{i}}$ = Pr$(z_t = i)$, where $\Psi{_{i}}$ is the fixed probability of being in state $i$ at time $t$, and $\sum_{i=1}^{z}\Psi{_{i}}=1$
+
+* ***Spatial perception [`s_threshold`]*** - Perception range of a walker at a specified location is determined by the parameter `s_threshold`. As the walker changes its position, this parameter undergoes an update. A common technique to set this parameter is by visually representing the data and then selecting an estimate that aligns with prior assumptions about the parameter. For many user cases, this strategy is quite effective. For `psim_artif`, users need to specify a value. However, for `psim_real`, the best-suited `s_threshold value` can be derived from the available sample dataset.
+
+* ***Steps [`step_length`]*** - The furthest distance a walker travels from one location point to another represents the `step_length`, which essentially characterizes the walker's speed across an area. It's vital to set the `step_length` judiciously, especially when the walker's movements are confined to tight pathways like a route network. Here, teh chose value should be less than the pathway's breadth.
+
+* ***Proportional ratios [`p_ratio`]*** - This refers to the density of events produced by the walkers in a given space. Specifically, it represents the fraction of total events stemming from a select group of the most active starting points. Take, for instance, a `20:80` ratio: this suggests that 20% of starting points (or walkers) are responsible for generating 80% of all point events. This implies that starting points possess varying intensity values, which can be leveraged to predict the eventual spatial distribution of these events, termed as the `spatial model`.
+
+
+### ***Spatial factors (landscape)***
+
+The followings are the key properties of a landscape:
+
+
+* ***Spatial bandwidth [`s_band`]*** The spatial bandwidth is utilized to identify event re-occurrences that take place between two specific spatial thresholds. For instance, setting a spatial bandwidth of 200m to 400m means the user aims to pinpoint repeated events happening within this distance range. When paired with the ***Temporal bandwidth*** (discussed further below), this defines a comprehensive `spatiotemporal bandwidth`. Please note: This applies solely to point pattern simulations created from scratch using the `psim_artif` function. For simulations grounded in actual sample datasets, spatial bandwidths are automatically identified.
+
+* ***Origins [`coords`]*** - Walkers originate from specific starting points, referred to as origins. These origins can be randomly scattered throughout an area or may follow particular spatial patterns. Each origin is characterized by its xy coordinates. For instance, in the context of criminology, an offender might be represented as a walker, with their home serving as the origin.
+
+There are two primary patterns in which origins can be concentrated: nucleated and dispersed, as highlighted by ([Hornby and Jones, 1991](https://www.google.co.uk/books/edition/An_Introduction_to_Settlement_Geography/DLpzQgAACAAJ?hl=en)). In a nucleated concentration, all origins cluster around a single central point. On the other hand, a dispersed concentration features multiple focal points, with origins possibly spread randomly throughout the area (refer to fig. 1 for illustration).
+
+
+```{r figs1, warnings=FALSE, echo=FALSE, out.width="90%", out.height="100%", fig.align = "center", fig.cap=fig$cap("figs1","Type of origin concentration")}
+knitr::include_graphics("origins.png")
+```
+
+* ***Boundary [`poly`]*** - A landscape has defined boundaries, either represented by a polygon shapefile (known as `poly`) or determined by the spatial range of the sample point data.
+
+* ***Restrictions [`restriction_feat`]*** - Features that act as barriers consist of two main components:
+
+(i) Regions outside of the defined boundary (`poly`), which have a maximum restriction value of `1`. This means that walkers are prohibited from moving beyond this boundary.
+
+(ii) Features inside the boundary that hinder movement. These can be specific types of land use or physical landforms, like fenced-off areas or hills.
+
+To produce a restriction map, one typically follows a two-step process. For instance, when using a boundary shapefile of the Camden area in London (UK), a restriction map can be constructed in the following manner:
+
+`Step 1`: Generate boundary restriction
+
+```{r eval=FALSE, echo=TRUE}
+#load shapefile data
+load(file = system.file("extdata", "camden.rda", package="stppSim"))
+#extract boundary shapefile
+boundary = camden$boundary # get boundary
+#compute the restriction map
+restrct_map <- space_restriction(shp = boundary,res = 20, binary = TRUE)
+#plot the restriction map
+plot(restrct_map)
+```
+
+`Step 2`: Setting the `restrct_map` above as the `basemap`, and then stack the land use features to define the restrictions within the area,
+
+```{r eval=FALSE, echo=TRUE}
+# get landuse data
+landuse = camden$landuse 
+
+#compute the restriction map
+full_restrct_map <- space_restriction(shp = landuse, 
+     baseMap = restrct_map, res = 20, field = "restrVal", background = 1)
+
+#plot the restriction map
+plot(full_restrct_map)
+```
+
+```{r figs2, echo=FALSE, out.width="100%", out.height="100%", fig.align = "center", fig.cap=fig$cap("figs2","Restriction map")}
+knitr::include_graphics("restrictionMap.png")
+```
+
+Figure 2 provides a graphical representation of both the boundary extent and the restrictions posed by the `within-features`. These `within-features` are categorized into three separate classes, each having a unique restriction value as enumerated below:
+
+* **Leisure**: `0.5`
+* **Sports**: `0.7`
+* **Green**: `0.9`
+
+These values indicate the relative restriction each land use type imposes on movement.
+
+Within the simulation function, the boundary and the within-features are inputted using the `poly` and `restriction_feat` parameters, respectively. Both are provided in the `.shp` (shapefile) format.
+
+* ***Focal points [`n_foci`]*** - Locations, or origins, that hold greater significance often present more opportunities for event occurrences. This is specifically indicated when utilizing `psim_artif`. Users generally determine the number of focal points they wish to simulate. In terms of urban landscape structure, a focal point can equate to a `city/town centre`.
+
+Additionally, if there's a principal focal point within a city, it can be denoted using the `mfocal` parameter. By default, the value for `mfocal` is set to `NULL`.
+
+There's also a foci separation parameter that lets users define how close or far apart these focal points are from each other. This parameter accepts values ranging from 1 to 100. A value of 1 signifies the closest proximity, whereas 100 indicates the farthest distance between focal points.
+
+
+### ***Temporal dimension***
+
+The following parameters define the temporal dimension:
+
+* ***Temporal bandwidth [`t_band`]*** The temporal bandwidth is utilized to identify event re-occurrences that take place between two specific temporal thresholds. For instance, setting a spatial bandwidth of 2day to 4days means the user aims to pinpoint repeated events happening within this time range. When paired with the ***Spatial bandwidth*** (discussed above), this defines a comprehensive `spatiotemporal bandwidth`. Similar to `spatial bandwidth', this applies solely to point pattern simulations created from scratch using the `psim_artif` function. For simulations grounded in actual sample datasets, temporal bandwidths are automatically identified.
+
+* ***Long-term trend [`trend`]*** - This parameter establishes the overarching trend of the time series that is to be simulated. The trend can be categorized as `stable`, `rising`, or `falling`.
+
+* `Stable`: Indicates that the time series remains relatively constant over time, with no significant upward or downward trend.
+
+* `Rising`: Suggests an upward trend in the time series. When this is selected, the supplementary `slope` argument can be employed to further define the incline of the trend as either `gentle` (a moderate increase) or `steep` (a rapid increase).
+
+* `Falling`: Denotes a downward trend in the time series. Similar to the rising trend, when this is chosen, the `slope` argument can be used to distinguish between a `gentle` decline or a `steep` drop.
+
+This parameter is pertinent only when simulating a time series from the scratch, without any pre-existing data.
+
+* ***Seasonal peak [`fPeak`]*** - This parameter sets the initial temporal peak of a sinusoidal pattern in a time series, thereby dictating the medium-term undulations throughout the series' duration. For instance, a first peak set at `90` days denotes a seasonal cycle spanning `180` days in the time series. This approach is primarily employed when the simulation's objective isn't to produce spatiotemporal interactions but to capture more general cyclic patterns within the data. 
+
+```{r figs3, echo=FALSE, out.width="70%", out.height="50%", fig.align = "center", fig.cap=fig$cap("figs3", "Global trends and patterns")}
+knitr::include_graphics("trend.png")
+```
+
+Figure 3 depicts anticipated seasonal patterns determined by various `fPeak` values. Beginning at 90 days, each subsequent pattern sees the `fPeak` value augmented by one month. As the `fPeak` date is pushed forward, the number of full seasonal cycles reduces.
+
+The integration of the `long-term trend` with the `seasonal peak` shapes the `temporal model` for the simulation. Before launching the actual simulation, it is advisable to either preview or review this model to ensure accuracy and alignment with objectives.
+
+* ***time bin*** - Time to reset all walkers. Typically 1 day. 
+
+
+## ***Installation of `stppSim`***
+
+From `R` console, type:
+
+```{r eval=FALSE, message=FALSE, warning=FALSE}
+#To install from  `CRAN`
+install.packages("stppSim")
+
+#To install the `developmental version`, type:
+remotes::install_github("MAnalytics/stppSim")
+#Note: `remotes` is an extra package that needed to be installed prior to the running of this code.
+```
+
+Now, to load the package, 
+
+```{r eval=FALSE, message=FALSE, warning=FALSE}
+library(stppSim)
+```
+
+## ***Notice:***
+
+###  ***`interactive` argument***
+
+Both `psim_artif` and `psim_real` functions include the `interactive` argument, which is set to `FALSE` as the default setting. When the interactive argument is toggled to `TRUE`, the console displays queries during the function's execution, prompting the user to decide if they wish to view the `spatial and temporal models` of the simulation.
+
+The `spatial model` displays the origins' locations and their strength distribution across the simulated space. This strength distribution provides an insight into how the eventual point (event) distribution in the simulation is likely to be distributed.
+
+On the other hand, the `temporal model` offers a visual representation of the expected trend and seasonal pattern, presented in a smoothed manner.
+
+Thus, by using the `interactive` option, users are given the advantage of reviewing both spatial and temporal patterns, ensuring that they align with their expectations and objectives before moving forward with the complete simulation.
+
+
+## ***Simulating point patterns from scratch***
+
+Three essential arguments are necessary for the simulation:
+
+1. `n_events` - This refers to `the number of points to simulate`. Instead of providing just a single value, it's recommended to input a vector of values. For instance, `n_events = c(200, 500, 1000, 2000)`. The output is presented as a list, with each value corresponding to a separate data frame. Notably, the length of `n_events` has minimal to no impact on processing duration.
+
+2. `start_date` - This designates the commencement date of the time series.
+
+3. `poly` - This represents `the polygon shapefile that demarcates the boundary of the study area`. The simulated point patterns are restricted to occur within this designated boundary.
+
+By providing these arguments, users can customize the scope and specifics of their simulation to meet their research objectives.
+
+### Example 
+
+To generate a spatiotemporal point pattern (`stpp`) using a boundary shapefile for the Camden Borough of London, which is embedded in the package, you the following code: 
+
+```{r eval=FALSE, echo = TRUE, message=FALSE, warning=FALSE}
+
+#load the data
+load(file = system.file("extdata", "camden.rda",
+                        package="stppSim"))
+
+boundary <- camden$boundary # get boundary data
+
+#specifying data sizes
+pt_sizes = c(200, 1000, 2000)
+
+#simulate data
+artif_stpp <- psim_artif(n_events=pt_sizes, start_date = "2021-01-01",
+  poly=boundary, n_origin=50, restriction_feat = NULL,
+  field = NA,
+  n_foci=5, foci_separation = 10, mfocal = NULL,
+  conc_type = "dispersed",
+  p_ratio = 20, s_threshold = 50, step_length = 20,
+  trend = "stable", fpeak=NULL,
+  slope = NULL,show.plot=FALSE, show.data=FALSE)
+
+```
+
+The processing time on an Intel Core i7-7500CPU @ 2.70GHz, 16.0GB RAM PC is `12.5 minutes`. The processing time is increases to `45.2` minutes if landscape restriction is added. Specifically, this increase occurs when the argument `restriction_feat = camden$landuse` is used, accompanied by `field = "val"`.
+
+To retrieve the result of any `n_events`, simply type the object name with the value index. For example to retrieve the result based on `n_events = 1000`, type: 
+
+```{r eval=FALSE}
+stpp_1000 <- artif_stpp[[2]]
+``` 
+
+* **Spatial Patterns**
+
+The configuration and clustering of events in the spatial domain can be fine-tuned by adjusting parameters that determine spatial components (such as `restriction_feat`, `n_origin`, `mfocal`, `foci_separation`, `n_foci`, `s_band`, and so forth) as well as those that guide walker behaviors (for example, `step_length`, `s_threshold`, and `p_ratio`). To introduce a focal point in the simulation (refer to the `mfocal` see package manual), employ the `make_grids` function. This function produces an interactive map that displays and permits the extraction of the xy coordinates from any location on the map. Enhanced with an integrated `OpenStreetMap`, the interactive platform aids users in more conveniently pinpointing specific locations.
+
+`Figure 4` showcases the spatial point patterns (`spp`) for `n_events = 1000` under diverse parameter settings. `Note:` The spatial configuration may differ with each code execution due to inherent random aspects within the function.
+
+`Figure 4a` displays the outcome when relying solely on default arguments, as demonstrated in the previous code.
+
+`Figure 4b` presents the pattern resulting from the integration of additional parameters: `restriction_feat = camden$landuse` and `mfocal = c(530000, 182250)`. Here, the first parameter restricts the number of events created within the land use (restriction) features, while the second emphasizes a central spatial concentration of origins, highlighted by a red dot on the map.
+
+`Figure 4c` depicts the configuration when the parameters of `restriction_feat` and `mfocal` are retained (as in 4b), but with an added `foci_separation = 50`. This ensures a moderate spatial distance between individual origins.
+
+Lastly, `Figure 4d` illustrates the spatial pattern when, besides maintaining the `mfocal` setting (similar to the above figures), the `s_threshold` and `step_length` are set at `250` and `50` respectively. This configuration aims to promote a broader distribution of points relative to their origins.
+
+
+```{r figs4, echo=FALSE, out.width="100%", out.height="100%", fig.align = "center", fig.cap=fig$cap("figs4", "Simulated spatial point patterns of Camden")}
+knitr::include_graphics("fromscratch.png")
+```
+
+In the above figures, notice that points that fall on exactly the same unique location are aggregated and symbolize to reflect the total point count. 
+
+* **Temporal Patterns**
+
+Given that the parameters influencing the overall temporal trends (`trend`, `fPeak`, and `slope`) remain unchanged across each simulation, it's logical to anticipate consistent or very similar temporal patterns across them. Accordingly, `Figure 5a-d` depict the temporal patterns corresponding to the spatial representations shown in `Figure 4a-d`.
+
+```{r figs5, echo=FALSE, out.width="100%", out.height="100%", fig.align = "center", fig.cap=fig$cap("figs5","Simulated global trends and patterns (gtp)")}
+knitr::include_graphics("temporalscratch.png")
+```
+
+When we modify the `fPeak` parameter to `30` days (equivalent to one month following the start date of the series) and run the simulation with default parameters, the resulting global temporal pattern can be visualized in `Figure 6`. This adjustment will likely introduce a distinct seasonal cycle in the simulated temporal pattern, emphasizing the influence of the `fPeak` parameter on the temporal distribution of events.
+
+```{r figs6, echo=FALSE, out.width="50%", out.height="50%", fig.align = "center", fig.cap=fig$cap("figs6", "Gtp with an earlier first seasonal peak")}
+knitr::include_graphics("onemonth.png")
+```
+
+
+* **Simulating spatiotemporal interactions**
+
+The simulation of point patterns with distinct spatiotemporal interactions can be achieved using two parameters: the spatial bandwidth (`s_band`) and the temporal bandwidth (`t_band`). When we speak of spatiotemporal interaction, we're referring to the likelihood that events within these specified bandwidths occur more frequently than what would be expected in a completely random scenario. In simulated datasets, it's feasible to observe interactions across several spatiotemporal bandwidths. For example, 
+
+```{r eval=FALSE, echo = TRUE, message=FALSE, warning=FALSE}
+
+#load the data
+load(file = system.file("extdata", "camden.rda",
+                        package="stppSim"))
+
+boundary <- camden$boundary # get boundary data
+
+#specifying data sizes
+pt_sizes = c(1500)
+
+#simulate data
+artif_stpp <- psim_artif(n_events=pt_sizes, start_date = NULL,
+  poly=boundary, n_origin=50, restriction_feat = NULL,
+  field = NA,
+  n_foci=5, foci_separation = 10, mfocal = NULL,
+  conc_type = "dispersed",
+  p_ratio = 20, s_threshold = 50, step_length = 20,
+  trend = "stable", fpeak=NULL,
+  shortTerm = "acyclical"
+  s_band = c(0, 200),
+  t_band = c(1,2),
+  slope = NULL,show.plot=FALSE, show.data=FALSE)
+
+```
+
+
+In the above code, .....  s_band = c(0, 200),
+  t_band = c(1,2),
+
+
+## ***Simulating `stpp` from sample real dataset***
+
+The pivotal parameters in this context are `n_events`, which dictates the number of points to simulate, and `ppt`, representing the sample real data. As previously mentioned, utilizing a vector of values for `n_events` is advisable. The sample dataset should distinctly feature `x`, `y`, and `t` fields, with further specifics provided in the package's manual.
+
+### Example 
+
+To extract a random sample from the `theft crimes` data in Camden and then utilize this sample to synthesize a `full` dataset, you can follow these general steps:
+
+```{r eval=FALSE, message=FALSE, warning=FALSE}
+
+#load Camden crimes
+data(camden_crimes)
+
+#extract 'theft' crime
+theft <- camden_crimes %>%
+  filter(type == "Theft")
+
+#print the total no. of records
+nrow(theft)
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE}
+
+#specify the proportion of total records to extract
+sample_size <- 0.3 #i.e., 30%
+
+set.seed(1000)
+dat_sample <- theft[sample(1:nrow(theft),
+  round((sample_size * nrow(theft)), digits=0),
+  replace=FALSE),1:3]
+
+#print the number of records in the sample data
+nrow(dat_sample)
+```
+
+Certainly, visualizing the spatial distribution of the data can provide insights that can inform the choice of parameters for subsequent analyses.
+
+Here's how you might plot the sample data based on their x and y locations using R's `ggplot2` package:
+
+```{r eval=FALSE, message=FALSE, warning=FALSE}
+
+plot(dat_sample$x, dat_sample$y,
+    pch = 16,
+     cex = 1,
+     main = "Sample data at unique locations",
+     xlab = "x",
+     ylab = "y")
+```
+
+`Figure 7a` displays the point patterns derived from the sample datasets. Often, crime data sets get aggregated to specific proximate reference points, like centroids of grid squares. To provide a clearer view of the spatial distribution and clustering inherent in the crime data, it's essential to group the points based on their unique locations. Accordingly, the subsequent code consolidates points by their distinct locations, producing the point patterns depicted in `Figure 7b`:
+
+```{r eval=FALSE, message=FALSE, warning=FALSE}
+agg_sample <- dat_sample %>%
+  mutate(y = round(y, digits = 0))%>%
+  mutate(x = round(x, digits = 0))%>%
+  group_by(x, y) %>%
+  summarise(n=n()) %>% 
+  mutate(size = as.numeric(if_else((n >= 1 & n <= 2), paste("1"),
+                        if_else((n>=3 & n <=5), paste("2"), paste("2.5")))))
+
+dev.new()
+itvl <- c(1, 2, 2.5)
+plot(agg_sample$x, agg_sample$y,
+     pch = 16,
+     cex=findInterval(agg_sample$size, itvl),
+     main = "Sample data aggregated at unique location",
+     xlab = "x",
+     ylab = "y")
+legend("topright", legend=c("1-2","3-5", ">5"), pt.cex=itvl, pch=16)
+
+#hist(agg_sample$size)
+```
+
+
+```{r figs7, echo=FALSE, out.width="100%", out.height="100%", fig.align = "center", fig.cap=fig$cap("figs7", "Sample real data (a) unaggregated and (b) aggregated by locations")}
+knitr::include_graphics("samplerealvssampleaggregated.png")
+```
+
+`Figure 7b` reveals that the southern region of Camden has the densest occurrence of theft crimes. The spatial layout of the sample data points can provide insights for users when determining the most fitting spatial parameters. For instance, to attain a more compact distribution of points, one might opt to assign smaller values to `n_origin` or to both `s_threshold` and `step_length`.
+
+Generally, when selecting suitable spatial parameters for a new study area, it's crucial to comprehend the relative scale of the new region in comparison to Camden (We'll delve deeper into this comparison in the sections that follow).
+
+Proceeding to simulate the point data:
+
+
+```{r eval=FALSE, message=FALSE, warning=FALSE}
+
+#As the actual size of any real (full) dataset
+#would not be known, therefore we will assume
+#`n_events` to be `2000`. In practice, a user can 
+#infer `n_events` from several other sources, such 
+#as other available full data sets, or population data, 
+#etc.
+
+#Simulate
+sim_fullData <- psim_real(n_events=2000, ppt=dat_sample,
+  start_date = NULL, poly = NULL, s_threshold = NULL,
+  step_length = 20, n_origin=50, restriction_feat=landuse, 
+  field="restrVal", p_ratio=20, crsys = "EPSG:27700")
+
+```
+
+```{r eval=FALSE, echo=FALSE, warning=FALSE}
+#read
+load(file="C:/Users/monsu/Documents/GitHub/stppSim backup/simulation_for_vignette/sim_fullData.rda")
+sim_d <- sim_fullData[[1]]
+
+```
+
+Summarising the results:
+
+```{r eval=FALSE, echo=TRUE, warning=FALSE}
+summary(sim_fullData[[1]])
+```
+
+
+* **Spatiotemporal interactions**
+
+Within the primary simulation function, `psim_real`, the `st_learner` function is employed to detect spatial and temporal bandwidths where the closeness (in space and time) of point events exceeds what would typically arise from mere chance, in a sample dataset (i.e., spatiotemporal interaction). If interaction bandwidths are detected, the main simulation function, `psim_real`, automatically incorporates them to generate point patterns that mirror the characteristics of the actual datasets.
+
+```{r eval=FALSE, message=FALSE, warning=FALSE}
+
+#get the restriction data
+landuse <- as_Spatial(landuse)
+
+simulated_stpp_ <- psim_real(
+  n_events=2000,
+  ppt=dat_sample,
+  start_date = NULL,
+  poly = NULL,
+  netw = NULL,
+  s_threshold = NULL,
+  step_length = 20,
+  n_origin=100,
+  restriction_feat = landuse,
+  field="restrVal",
+  p_ratio=20,
+  interactive = FALSE,
+  s_range = 600,
+  s_interaction = "medium",
+  crsys = "EPSG:27700"
+)
+
+```
+
+In the above code snippet, the `s_range` parameter is used to set the spatial range. The default temporal bandwidth is 30 days with a daily incremental range. 
+If the `s_range` parameter is assigned a value of NULL, the function bypasses the detection of space-time interactions and concentrates solely on modeling the spatial and temporal patterns. To assess the spatiotemporal interaction within any dataset, the NearRepeat calculator, which can be found [here](https://github.com/wsteenbeek/NearRepeat) (and adapted as `NRepeat` function in this package), may be employed.
+
+```{r eval=FALSE, message=FALSE, warning=FALSE}
+
+#extract the output of a simulation
+stpp <- simulated_stpp_[[1]]
+
+stpp <- stpp %>%
+  dplyr::mutate(date = substr(datetime, 1, 10))%>%
+  dplyr::mutate(date = as.Date(date))
+
+#define spatial and temporal thresholds 
+s_range <- 600
+s_thres <- seq(0, s_range, len=4)
+
+t_thres <- 1:31
+
+#detect space-time interactions
+myoutput2 <- NRepeat(x = stpp$x, y = stpp$y, time = stpp$date,
+                        sds = s_thres,
+                        tds = t_thres,
+                        s_include.lowest = FALSE, s_right = FALSE, 
+                        t_include.lowest = FALSE, t_right = FALSE)
+
+#extract the knox ratio
+knox_ratio <- round(myoutput2$knox_ratio, digits = 2)
+
+#extract the corresponding significance values
+pvalues <- myoutput2$pvalues
+
+#append asterisks to significant results
+for(i in 1:nrow(pvalues)){ #i<-1
+    id <- which(pvalues[i,] <= 0.05)
+    knox_ratio[i,id] <- paste0(knox_ratio[i,id], "*")
+
+}
+
+#output the results
+knox_ratio
+
+```
+
+
+
+### ***Comparing simulated data and (`full`) real data***
+
+Both visual and statistical methodologies offer valuable insights when comparing the spatial and temporal patterns of simulated data to those of the full real data (encompassing 100% of the dataset).
+
+Utilizing the visual approach allows for a direct visual comparison of patterns, trends, clusters, and anomalies between the datasets. This is typically done using maps, graphs, or charts that depict the spatial and temporal distributions.
+
+On the other hand, the statistical approach provides a more quantified measure of the similarity or differences between the datasets. Various statistical tests, measures, or models can be applied to assess the degree of similarity, correlation, or divergence between the spatial and temporal patterns of the simulated and real data.
+
+Together, these methods offer a comprehensive assessment, combining the intuitive appeal of visual representation with the precision and rigor of statistical analysis.
+
+* ***Visual approach***
+
+`Figure 8a and 8b` visually represent the spatial point distributions of the simulated and full real datasets, respectively. From these figures, one can assess the spatial fidelity of the simulated data by visually comparing its distribution, clusters, and other spatial patterns against the full real dataset.
+
+Meanwhile, `Figure 9a and 9b` present the temporal patterns of the simulated and real datasets over time. These plots can be used to evaluate how well the simulated data captures temporal trends, seasonality, peaks, and other time-related patterns when compared to the full real data.
+
+By examining both sets of figures in tandem, one can get a holistic view of the accuracy and reliability of the simulated data in mimicking both the spatial and temporal characteristics of the real dataset.
+
+```{r figs8, echo=FALSE, out.width="100%", out.height="100%", fig.align = "center", fig.cap=fig$cap("figs8", "Setting an earlier first seasonal peak")}
+knitr::include_graphics("simvsreal_spatial.png")
+```
+
+In `Figure 8`, two key observations stand out: the `total number of points` and the `clustering of points`.
+
+Firstly, the decision to set `n_events = 2000` was deliberate. This mirrors real-world scenarios where the exact total number of events or points isn't always known in advance or might be subject to some variability.
+
+Secondly, a notable difference in point clustering is observed between the two figures. In the real data (`Figure 8b`), there's a pronounced concentration of points at specific, unique locations. This is indicative of common crime recording practices where incidents are assigned to the nearest predefined reference points, such as street corners, landmarks, or property centroids. Such practices are aimed at preserving anonymity or simplifying the data representation. In contrast, our simulated data in `Figure 8a` doesn't operate under this premise. Instead, it allows for a more dispersed distribution without forcing the points to aggregate around predefined reference locations.
+
+Thus, while the simulation strives to capture the broader spatial characteristics of crime patterns, it does not replicate the specific recording practices often seen in real crime data.
+
+```{r figs9, echo=FALSE, out.width="100%", out.height="100%", fig.align = "center", fig.cap=fig$cap("figs9", "Global temporal pattern of (a) simulated and (b) full real data set ")}
+knitr::include_graphics("simvsreal_temporal.png")
+```
+
+From `Figure 9`, it's evident that the temporal dynamics of both the simulated and real datasets align closely. Both exhibit congruent seasonal fluctuations, as highlighted by the red lines, and a consistent upward trend over time. This resemblance underscores the capability of the simulation in accurately mirroring the time-based patterns observed in the actual data.
+
+
+* ***Statistical approach***
+
+In an area as compact as Camden, we can statistically compare the simulated and actual data sets in terms of both space and time using `Pearson's Coefficient`. For spatial analysis, data sets were grouped into a consistent square grid system. By aligning counts based on grid IDs, we derived a correlation metric. This evaluation employed three varying grid sizes (`150sq.mts`, `250sq.mts`, and `400sq.mts`) to observe how correlation fluctuates with spatial granularity. Temporally, we examined three scales: `daily`, `weekly`, and `monthly`. `Table 1` illustrates the correlation values, highlighting the degree of resemblance between the two sets of data.
+
+```{r table1, results='asis', echo=FALSE, tidy.opts=list(width.cutoff=50)}
+table <- data.frame(cbind(Dimension = c("Spatial", "","","Temporal","",""),
+      Scale_sq.mts = c(150, 250, 400, "Daily", "Weekly", "Monthly"),
+      Corr.Coeff = c(.50, .62, .78, .34, .78, .93)))
+
+knitr::kable(table, caption = "Table 1. `Correlation between simulated and real data sets`", row.names=FALSE, align=c("l", "r", "r"))
+```
+
+The simulated and actual data sets show significant parallels in both spatial and temporal domains. However, an exception arises at the `daily` temporal scale, where the similarity diminishes. Such an outcome is anticipated due to the inherent randomness at this granular level. Moreover, the daily timestamp of the real data set was generated at random, as detailed in the package user manual. As data aggregation intensifies, whether spatially or temporally, the similarity between the two sets strengthens. This is evidenced by correlation coefficients of `.78` for the broadest spatial scale and `.93` for the most extended temporal scale.
+
+## ***Setting simulation parameters for different study areas***
+
+In this vignette, while most parameters should yield comparable outcomes for any study location, three specific parameters that govern the spatial distribution of simulated points stand out: `n_origin`, `s_threshold`, and `step_length`. To ensure a balanced distribution of point patterns spatially, users are encouraged to designate fitting values for these parameters. With a change in the size of the study zone, it's anticipated that these three parameters would "proportionally" scale, increasing with a larger area and decreasing for a smaller one. `Note`: For optimal spatial control, we suggest users scale either `n_origin` or both `s_threshold` and `step_length`, rather than all three.
+
+To address the intricacies tied to these parameters, we introduce the `compare_areas()` function. This aids users in gauging the relative sizes of two distinct areas. Commonly, one of these areas - for instance, `Camden` in this context - would have pre-established simulation parameters. By integrating a secondary polygon shapefile into the function, it produces a factor or value that denotes the size difference between the two zones. This factor serves as a multiplier for the parameters mentioned earlier when transitioning to a new area. For instance, if `Camden` is `3 times` smaller than the new chosen area, users should multiply either `n_origin` or both `s_threshold` and `step_length` by `3` for accurate simulation. Conversely, if Camden is larger, users should divide the parameters by the factor. From a computational standpoint, adjusting both {s_threshold and step_length} is more efficient.
+
+To illustrate the efficacy of the `compare_areas()` function, let's juxtapose the `Birmingham` region of the UK with the Camden area as an example:
+
+
+```{r eval=FALSE, echo=TRUE, warning=FALSE}
+
+#load 'area1' object - boundary of Camden, UK
+load(file = system.file("extdata", "camden.rda",
+                        package="stppSim"))
+
+camden_boundary = camden$boundary
+
+#load 'area2' - boundary of Birmingham, UK
+load(file = system.file("extdata", "birmingham_boundary.rda",
+                        package="stppSim"))
+
+#run the comparison
+output <- compare_areas(area1 = camden_boundary,
+              area2 = birmingham_boundary, display_output = FALSE)
+
+```
+
+To display the comparison and the resultant factor, you can use the following method:
+
+```{r eval=FALSE, echo=FALSE, warning=FALSE}
+output$comparison
+```
+
+The above code returns the string `#-----'area2' is 12.3 times bigger than 'area1'-----#`. 
+
+For the Birminghma simulation, either multiply the `n_origin` value by `12.3` or apply the same multiplication factor of `12.3` to both `s_threshold` and `step_length`. After adjusting these values, input them into the simulation function and execute it.
+
+## ***Discussion***
+
+This guide has showcased the capabilities of the primary simulation functions in the `stppSim` package: (i) `psim_artif` for creating stpp from the ground up, and (ii) `psim_real` for producing stpp using a sampled real data set. The document illustrated how to adjust the parameters to shape the spatial and dimensional attributes of the data. Nevertheless, it's essential to tailor these parameters to fit the specific subject matter being explored. The package offers vast potential across various domains, including analyzing human crime patterns and behaviors, investigating the foraging habits of wildlife and their achievements, and examining disease vectors and infections. We're committed to refining the package for even broader uses.
+
+We appreciate the feedback from our user community. Please notify us of any issues or bugs so we can address them promptly. Contributions to this package are welcomed and will be duly credited.
+
